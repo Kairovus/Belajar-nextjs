@@ -15,7 +15,7 @@ export default function CreateCustomerForm() {
   const [state, formAction] = useActionState(createCustomer, initialState);
 
   return (
-    <form action={formAction} encType="multipart/form-data">
+    <form action={formAction}>
       <div className="rounded-md bg-gray-50 p-4 md:p-6">
         {/* Customer Name */}
         <div className="mb-4">
