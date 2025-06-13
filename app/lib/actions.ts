@@ -22,6 +22,12 @@ const FormSchema = z.object({
   date: z.string(),
 });
 
+const CustomerFormSchema = z.object({
+  name: z.string().min(1, "Name is required"),
+  email: z.string().email("Invalid email address"),
+  phone: z.string().min(1, "Phone number is required"),
+});
+
 export type State = {
   errors?: {
     customerId?: string[];
@@ -131,4 +137,67 @@ export async function authenticate(
 export async function deleteCustomers(id: string) {
   await sql`DELETE FROM customers WHERE id = ${id}`;
   revalidatePath("/dashboard/customers");
+}
+
+export async function createCustomer(formData: FormData) {
+  const validatedFields = CustomerFormSchema.safeParse({
+    name: formData.get("name"),
+    email: formData.get("email"),
+    phone: formData.get("phone"),
+  });
+
+  if (!validatedFields.success) {
+    return {
+      errors: validatedFields.error.flatten().fieldErrors,
+      message: "Missing Fields. Failed to Create Customer.",
+    };
+  }
+
+  const { name, email, phone } = validatedFields.data;
+
+  try {
+    await sql`
+      INSERT INTO customers (name, email, phone)
+      VALUES (${name}, ${email}, ${phone})
+    `;
+  } catch (error) {
+    return {
+      message: "Database Error: Failed to create customer.",
+    };
+  }
+
+  revalidatePath("/dashboard/customers");
+  redirect("/dashboard/customers");
+}
+
+export async function updateCustomer(id: string, formData: FormData) {
+  const validatedFields = CustomerFormSchema.safeParse({
+    name: formData.get("name"),
+    email: formData.get("email"),
+    phone: formData.get("phone"),
+  });
+
+  if (!validatedFields.success) {
+    return {
+      errors: validatedFields.error.flatten().fieldErrors,
+      message: "Missing Fields. Failed to Update Customer.",
+    };
+  }
+
+  const { name, email, phone } = validatedFields.data;
+
+  try {
+    await sql`
+      UPDATE customers
+      SET name = ${name}, email = ${email}, phone = ${phone}
+      WHERE id = ${id}
+    `;
+  } catch (error) {
+    return {
+      message: "Database Error: Failed to update customer.",
+    };
+  }
+
+  revalidatePath("/dashboard/customers");
+  redirect("/dashboard/customers");
 }
