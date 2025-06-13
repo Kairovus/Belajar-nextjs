@@ -1,10 +1,7 @@
 import { Metadata } from "next";
-import Search from "@/app/ui/search";
 import Table from "@/app/ui/customers/table";
-import { lusitana } from "@/app/ui/fonts";
 import { Suspense } from "react";
 import { fetchFilteredCustomers, fetchCustomersPages } from "@/app/lib/data";
-import { CreateCustomers } from "@/app/ui/customers/buttons";
 import Pagination from "@/app/ui/invoices/pagination";
 
 export const metadata: Metadata = {

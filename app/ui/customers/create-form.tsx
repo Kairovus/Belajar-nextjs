@@ -11,11 +11,11 @@ import { createCustomer, customerState } from "@/app/lib/actions";
 import { useActionState } from "react";
 
 export default function CreateCustomerForm() {
-  const initialState: customerState = { message: "", errors: {} };
-  const [state, dispatch] = useActionState(createCustomer, initialState);
+  const initialState: customerState = { message: null, errors: {} };
+  const [state, formAction] = useActionState(createCustomer, initialState);
 
   return (
-    <form action={dispatch}>
+    <form action={formAction} encType="multipart/form-data">
       <div className="rounded-md bg-gray-50 p-4 md:p-6">
         {/* Customer Name */}
         <div className="mb-4">
@@ -72,22 +72,21 @@ export default function CreateCustomerForm() {
         {/* Customer Image URL */}
         <div className="mb-4">
           <label htmlFor="image_url" className="mb-2 block text-sm font-medium">
-            Image URL
+            Profile Picture
           </label>
           <div className="relative">
             <input
-              id="image_url"
-              name="image_url"
-              type="text"
-              placeholder="Enter image URL"
+              id="image"
+              name="image"
+              type="file"
               className="peer block w-full rounded-md border border-gray-200 py-2 pl-10 text-sm outline-2 placeholder:text-gray-500"
               aria-describedby="image_url-error"
             />
             <PhotoIcon className="pointer-events-none absolute left-3 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-gray-500" />
           </div>
           <div id="image_url-error" aria-live="polite" aria-atomic="true">
-            {state.errors?.image_url &&
-              state.errors.image_url.map((error: string) => (
+            {state.errors?.image &&
+              state.errors.image.map((error: string) => (
                 <p className="mt-2 text-sm text-red-500" key={error}>
                   {error}
                 </p>

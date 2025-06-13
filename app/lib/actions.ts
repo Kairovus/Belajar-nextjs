@@ -6,8 +6,17 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import postgres from "postgres";
 import { z } from "zod";
+import { createClient } from "@supabase/supabase-js";
 
 const sql = postgres(process.env.POSTGRES_URL!, { ssl: "require" });
+
+const MAX_FILE_SIZE = 50000000;
+const ACCEPTED_IMAGE_TYPES = [
+  "image/jpeg",
+  "image/jpg",
+  "image/png",
+  "image/webp",
+];
 
 // Zod Schemas
 const FormSchema = z.object({
@@ -23,25 +32,22 @@ const FormSchema = z.object({
 });
 
 const CustomerSchema = z.object({
-  id: z.string().optional(),
-  name: z
-    .string()
-    .min(2, { message: "Name must be at least 2 characters long" })
-    .max(255, { message: "Name must not exceed 255 characters" }),
-  email: z
-    .string()
-    .email({ message: "Please enter a valid email address" })
-    .min(5, { message: "Email must be at least 5 characters long" })
-    .max(255, { message: "Email must not exceed 255 characters" }),
-  image_url: z
-    .string()
-    .url({ message: "Please enter a valid URL for the image" })
-    .optional()
-    .default("/customers/default.png"),
+  id: z.string(),
+  name: z.string({ message: "Please enter customer's name." }),
+  email: z.string().email({ message: "Please enter customer's email." }),
+  image: z
+    .any()
+    .refine((file) => file?.size <= MAX_FILE_SIZE, `Max image size is 5MB.`)
+    .refine(
+      (file) => ACCEPTED_IMAGE_TYPES.includes(file?.type),
+      "Only .jpg, .jpeg, .png and .webp formats are supported."
+    ),
 });
 
 const CreateInvoice = FormSchema.omit({ id: true, date: true });
+
 const UpdateInvoice = FormSchema.omit({ id: true, date: true });
+
 const CreateCustomer = CustomerSchema.omit({ id: true });
 
 export type State = {
@@ -57,7 +63,7 @@ export type customerState = {
   errors?: {
     name?: string[];
     email?: string[];
-    image_url?: string[];
+    image?: string[];
   };
   message?: string | null;
 };
@@ -132,59 +138,13 @@ export async function updateInvoice(
 }
 
 export async function deleteInvoice(id: string) {
+  // throw new Error("Failed to delete invoice");
   try {
     await sql`DELETE FROM invoices WHERE id = ${id}`;
     revalidatePath("/dashboard/invoices");
   } catch (error) {
     console.error(error);
-    return { message: "Database Error: Failed to Delete Invoice." };
   }
-}
-
-export async function deleteCustomers(id: string) {
-  try {
-    await sql`DELETE FROM customers WHERE id = ${id}`;
-    revalidatePath("/dashboard/customers");
-  } catch (error) {
-    console.error(error);
-    return { message: "Database Error: Failed to Delete Customer." };
-  }
-}
-
-export async function createCustomer(prevState: customerState, formData: FormData) {
-  // Validate form fields
-  const validatedFields = CreateCustomer.safeParse({
-    name: formData.get("name"),
-    email: formData.get("email"),
-    image_url: formData.get("image_url"),
-  });
-
-  // If form validation fails, return errors
-  if (!validatedFields.success) {
-    return {
-      errors: validatedFields.error.flatten().fieldErrors,
-      message: "Missing Fields. Failed to Create Customer.",
-    };
-  }
-
-  const { name, email, image_url } = validatedFields.data;
-
-  try {
-    // Insert the customer into the database
-    await sql`
-      INSERT INTO customers (name, email, image_url)
-      VALUES (${name}, ${email}, ${image_url})
-    `;
-  } catch (error) {
-    // If a database error occurs, return a more specific error message
-    return {
-      message: "Database Error: Failed to Create Customer.",
-    };
-  }
-
-  // Revalidate the cache and redirect the user
-  revalidatePath("/dashboard/customers");
-  redirect("/dashboard/customers");
 }
 
 // Auth
@@ -204,5 +164,74 @@ export async function authenticate(
       }
     }
     throw error;
+  }
+}
+
+// Server actions
+export async function createCustomer(
+  prevState: customerState,
+  formData: FormData
+) {
+  const validatedFields = CreateCustomer.safeParse({
+    name: formData.get("name"),
+    email: formData.get("email"),
+    image: formData.get("image"),
+  });
+
+  // If form validation fails, return errors early. Otherwise, continue.
+  if (!validatedFields.success) {
+    return {
+      errors: validatedFields.error.flatten().fieldErrors,
+      message: "Missing Fields. Failed to Create Customer.",
+    };
+  }
+  const { name, email, image } = validatedFields.data;
+
+  // Create Supabase client
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
+
+  const fileExt = image.name.split(".").pop();
+  const fileName = `${Date.now()}.${fileExt}`;
+  const filePath = `customers/${fileName}`;
+
+  // Upload file using standard upload
+  const { error } = await supabase.storage
+    .from("supabucket")
+    .upload(filePath, image);
+  if (error) {
+    console.error(error.message);
+    return { message: "Supabase Upload Error" };
+  }
+
+  const { data: publicUrlData } = supabase.storage
+    .from("supabucket")
+    .getPublicUrl(filePath);
+
+  const publicUrl = publicUrlData.publicUrl;
+
+  try {
+    await sql`
+      INSERT INTO customers (name, email, image_url)
+      VALUES (${name}, ${email}, ${publicUrl})
+    `;
+  } catch (error) {
+    console.error(error);
+    return { message: "Database Error: Failed to Create Customer." };
+  }
+
+  revalidatePath("/dashboard/customers");
+  redirect("/dashboard/customers");
+}
+
+export async function deleteCustomer(id: string) {
+  // throw new Error("Failed to delete invoice");
+  try {
+    await sql`DELETE FROM customers WHERE id = ${id}`;
+    revalidatePath("/dashboard/invoices");
+  } catch (error) {
+    console.error(error);
   }
 }
